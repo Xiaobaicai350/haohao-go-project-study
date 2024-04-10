@@ -13,10 +13,10 @@ type Group struct {
 	name      string
 	getter    Getter
 	mainCache cache
-	peers     PeerPicker
+	peers     PeerPicker //用于获取远程节点的客户端。
 	// use singleflight.Group to make sure that
 	// each key is only fetched once
-	loader *singleflight.Group
+	loader *singleflight.Group //避免多个key多次加载造成缓存击穿
 }
 
 // A Getter loads data for a key.
