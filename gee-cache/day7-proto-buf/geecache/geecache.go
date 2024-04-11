@@ -8,37 +8,38 @@ import (
 	"sync"
 )
 
-// A Group is a cache namespace and associated data loaded spread over
+// Group 是一个缓存的命名空间
 type Group struct {
-	name      string
-	getter    Getter
-	mainCache cache
-	peers     PeerPicker //用于获取远程节点的客户端。
-	// use singleflight.Group to make sure that
-	// each key is only fetched once
-	loader *singleflight.Group //避免多个key多次加载造成缓存击穿
+	name      string              //Group的名称,每个 Group 拥有一个唯一的名称 name
+	getter    Getter              //用户传入的回调函数,用于实现缓存未命中时获取源数据
+	mainCache cache               //小cache，是封装大Cache的
+	peers     PeerPicker          //用于获取远程节点的客户端。
+	loader    *singleflight.Group //避免多个key多次加载造成缓存击穿
 }
 
-// A Getter loads data for a key.
+// Getter 回调接口
 type Getter interface {
+	// Get 函数用于获取源数据。
 	Get(key string) ([]byte, error)
 }
 
-// A GetterFunc implements Getter with a function.
+// GetterFunc 是一个接口型函数,定义函数类型 GetterFunc，并实现 Getter 接口的 Get 方法。
 type GetterFunc func(key string) ([]byte, error)
 
-// Get implements Getter interface function
+// Get 方便直接传入函数做参数
 func (f GetterFunc) Get(key string) ([]byte, error) {
 	return f(key)
 }
 
 var (
-	mu     sync.RWMutex
+	mu sync.RWMutex
+	//新建group的map，key为group的name，value指向这个Group对象
 	groups = make(map[string]*Group)
 )
 
-// NewGroup create a new instance of Group
+// NewGroup 方法用来创建的新的 Group
 func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
+	//如果没有传入用于查询源数据的函数，直接返回错误就行
 	if getter == nil {
 		panic("nil Getter")
 	}
@@ -54,8 +55,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 	return g
 }
 
-// GetGroup returns the named group previously created with NewGroup, or
-// nil if there's no such group.
+// GetGroup 方法通过 name 得到Group对象指针
 func GetGroup(name string) *Group {
 	mu.RLock()
 	g := groups[name]
@@ -63,17 +63,20 @@ func GetGroup(name string) *Group {
 	return g
 }
 
-// Get value for a key from cache
+// Get 方法通过传入 key 进行查询是否有这个key
 func (g *Group) Get(key string) (ByteView, error) {
+	//如果为空，就报错
 	if key == "" {
 		return ByteView{}, fmt.Errorf("key is required")
 	}
 
+	//先查询本地缓存
+	//如果能在本地缓存中找到，返回对应的value
 	if v, ok := g.mainCache.get(key); ok {
 		log.Println("[GeeCache] hit")
 		return v, nil
 	}
-
+	//如果在本地缓存找不到，就去其他分布式节点找/去数据库里找
 	return g.load(key)
 }
 
@@ -97,7 +100,7 @@ func (g *Group) load(key string) (value ByteView, err error) {
 				log.Println("[GeeCache] Failed to get from peer", err)
 			}
 		}
-
+		//去数据库里找，这里会调用用户传入进来的回调函数
 		return g.getLocally(key)
 	})
 
@@ -107,17 +110,22 @@ func (g *Group) load(key string) (value ByteView, err error) {
 	return
 }
 
+// 调用这个函数会把这个传入的数据添加到本地缓存中去
 func (g *Group) populateCache(key string, value ByteView) {
 	g.mainCache.add(key, value)
 }
 
+// 去数据库里找对应的key数据，这里会调用用户传入进来的回调函数
 func (g *Group) getLocally(key string) (ByteView, error) {
+	//通过传入的getter方法进行查询数据库
 	bytes, err := g.getter.Get(key)
+	//如果查询不到，就报错。
 	if err != nil {
 		return ByteView{}, err
-
 	}
+	//对数据进行封装，封装成ByteView对象
 	value := ByteView{b: cloneBytes(bytes)}
+	//把数据添加到本地缓存中
 	g.populateCache(key, value)
 	return value, nil
 }
