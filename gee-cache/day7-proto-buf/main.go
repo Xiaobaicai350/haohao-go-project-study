@@ -36,6 +36,7 @@ func createGroup() *geecache.Group {
 // 用来启动缓存服务器：创建 HTTPPool，添加节点信息，注册到 gee 中，
 // 启动 HTTP 服务（共3个端口，8001/8002/8003），用户不感知。
 func startCacheServer(addr string, addrs []string, gee *geecache.Group) {
+	//新建HTTPPool，用于服务端
 	peers := geecache.NewHTTPPool(addr)
 	peers.Set(addrs...)
 	gee.RegisterPeers(peers)

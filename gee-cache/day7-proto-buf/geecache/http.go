@@ -112,7 +112,7 @@ func (p *HTTPPool) PickPeer(key string) (PeerGetter, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	//调用一致性hash的Get方法， Get 方法主要功能是获取与key最接近的节点
-	if peer := p.peers.Get(key); peer != "" && peer != p.self { //这里存疑，为什么不能跟本机相等
+	if peer := p.peers.Get(key); peer != "" && peer != p.self { //这里存疑，为什么不能跟本机相等（已解决，如果是跟本机相等，不是还得去本机的数据库找吗，调用这个方法的方法最后就去本机数据库找了）
 		p.Log("Pick peer %s", peer)
 		return p.httpGetters[peer], true
 	}
