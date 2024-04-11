@@ -1,7 +1,14 @@
+//protobuf 有2个版本，默认版本是 proto2。
+//如果需要 proto3，则需要在非空非注释第一行使用 syntax = "proto3" 标明版本。
 syntax = "proto3";
 
+//package，即包名声明符是可选的，用来防止不同的消息类型有命名冲突。
 package geecachepb;
 
+/**
+每个字符=后面的数字称为标识符，每个字段都需要提供一个唯一的标识符。
+标识符用来在消息的二进制格式中识别各个字段，一旦使用就不能够再改变，标识符的取值范围为 [1, 2^29 - 1] 。
+ */
 message Request {
   string group = 1;
   string key = 2;
@@ -11,6 +18,8 @@ message Response {
   bytes value = 1;
 }
 
+//RPC 服务接口
+//提供了 Get 接口 入参是Request类型，返回类型是Response类
 service GroupCache {
   rpc Get(Request) returns (Response);
 }
