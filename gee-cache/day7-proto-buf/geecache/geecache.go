@@ -14,7 +14,7 @@ type Group struct {
 	getter    Getter              //用户传入的回调函数,用于实现缓存未命中时获取源数据
 	mainCache cache               //小cache，是封装大Cache的
 	peers     PeerPicker          //用于根据传入的key选择相应节点，然后在根据节点返回对应的httpGetter
-	loader    *singleflight.Group //避免多个key多次加载造成缓存击穿
+	loader    *singleflight.Group //避免多个key同时发起请求，造成缓存击穿
 }
 
 // Getter 回调接口
@@ -89,8 +89,9 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 }
 
 func (g *Group) load(key string) (value ByteView, err error) {
-	// each key is only fetched once (either locally or remotely)
-	// regardless of the number of concurrent callers.
+	// Do 方法，接收 2 个参数，第一个参数是 key，第二个参数是一个函数 fn。
+	// Do 的作用就是：
+	// 针对相同的 key，无论 Do 被调用多少次，函数 fn 都只会被调用一次，等待 fn 调用结束了，返回返回值或错误。
 	viewi, err := g.loader.Do(key, func() (interface{}, error) {
 		//若非本机节点
 		if g.peers != nil {
