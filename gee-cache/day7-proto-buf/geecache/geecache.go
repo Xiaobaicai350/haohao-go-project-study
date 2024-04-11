@@ -13,7 +13,7 @@ type Group struct {
 	name      string              //Group的名称,每个 Group 拥有一个唯一的名称 name
 	getter    Getter              //用户传入的回调函数,用于实现缓存未命中时获取源数据
 	mainCache cache               //小cache，是封装大Cache的
-	peers     PeerPicker          //用于获取远程节点的客户端。
+	peers     PeerPicker          //用于根据传入的key选择相应节点，然后在根据节点返回对应的httpGetter
 	loader    *singleflight.Group //避免多个key多次加载造成缓存击穿
 }
 
@@ -80,7 +80,7 @@ func (g *Group) Get(key string) (ByteView, error) {
 	return g.load(key)
 }
 
-// RegisterPeers registers a PeerPicker for choosing remote peer
+// RegisterPeers 实现了把传入的实现了 PeerPicker 接口的 HTTPPool 注入到 Group 的属性中
 func (g *Group) RegisterPeers(peers PeerPicker) {
 	if g.peers != nil {
 		panic("RegisterPeerPicker called more than once")
@@ -92,8 +92,10 @@ func (g *Group) load(key string) (value ByteView, err error) {
 	// each key is only fetched once (either locally or remotely)
 	// regardless of the number of concurrent callers.
 	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		//若非本机节点
 		if g.peers != nil {
 			if peer, ok := g.peers.PickPeer(key); ok {
+				//则调用 getFromPeer() 从远程获取
 				if value, err = g.getFromPeer(peer, key); err == nil {
 					return value, nil
 				}
@@ -130,12 +132,15 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 	return value, nil
 }
 
+// getFromPeer 实现了访问远程节点，根据key获取返回值的功能
 func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+	//构建req对象。
 	req := &pb.Request{
 		Group: g.name,
 		Key:   key,
 	}
 	res := &pb.Response{}
+	//这个接口是客户端用的，用于发起/<groupName>/<key> 类似的get请求
 	err := peer.Get(req, res)
 	if err != nil {
 		return ByteView{}, err

@@ -9,6 +9,7 @@ import (
 // Hash 函数型接口，跟 GetterFunc 一样都是函数型接口
 type Hash func(data []byte) uint32
 
+// Map 类型主要功能是根据具体的key选择节点
 type Map struct {
 	hash     Hash           //hash函数
 	replicas int            //虚拟节点倍数，如果是3的话，原来有2个节点，现在就有6个虚拟节点
@@ -29,6 +30,7 @@ func New(replicas int, fn Hash) *Map {
 	return m
 }
 
+// Add 函数主要是通过把节点名传入进来，通过一致性hash算法添加到服务器的切片中
 // Add 函数允许传入   0-n个   真实节点的名称
 func (m *Map) Add(keys ...string) {
 	for _, key := range keys {
