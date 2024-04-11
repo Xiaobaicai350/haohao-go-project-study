@@ -19,11 +19,10 @@ const (
 	defaultReplicas = 50
 )
 
-// HTTPPool implements PeerPicker for a pool of HTTP peers.
+// HTTPPool 作为承载节点间 HTTP 通信的核心数据结构（包括服务端和客户端）。
 type HTTPPool struct {
-	// this peer's base URL, e.g. "https://example.net:8000"
-	self        string
-	basePath    string
+	self        string     //用来记录自己的地址，包括主机名和端口号
+	basePath    string     //作为节点间通信的前缀，默认是"/_geecache/"（上面那个defaultBasePath常量就是）
 	mu          sync.Mutex // guards peers and httpGetters
 	peers       *consistenthash.Map
 	httpGetters map[string]*httpGetter // keyed by e.g. "http://10.0.0.2:8008"
@@ -37,33 +36,40 @@ func NewHTTPPool(self string) *HTTPPool {
 	}
 }
 
-// Log info with server name
+// Log 打印一些信息 类似： [Server localhost] GET /example
 func (p *HTTPPool) Log(format string, v ...interface{}) {
 	log.Printf("[Server %s] %s", p.self, fmt.Sprintf(format, v...))
 }
 
-// ServeHTTP handle all http requests
+// ServeHTTP 方法处理所有的HTTP请求
 func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	//首先判断访问路径的前缀是否是basePath，如果不是就返回panic
 	if !strings.HasPrefix(r.URL.Path, p.basePath) {
 		panic("HTTPPool serving unexpected path: " + r.URL.Path)
 	}
+	//打印信息
 	p.Log("%s %s", r.Method, r.URL.Path)
-	// /<basepath>/<groupname>/<key> required
+	// 由于我们规定信息格式是类似：<basepath>/<groupname>/<key> 这种的
+	//所以需要进行截取，这里标识从<basepath>后进行拆，通过/进行拆成两个部分
+	//也就是把groupname和key拆出来
 	parts := strings.SplitN(r.URL.Path[len(p.basePath):], "/", 2)
+	//如果不是2，就报错，格式不对
 	if len(parts) != 2 {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-
+	//得到groupName
 	groupName := parts[0]
+	//得到key
 	key := parts[1]
 
+	// GetGroup 方法通过 name 得到Group对象指针
 	group := GetGroup(groupName)
 	if group == nil {
 		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
 		return
 	}
-
+	// Get 方法通过传入 key 进行查询是否有这个key
 	view, err := group.Get(key)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
